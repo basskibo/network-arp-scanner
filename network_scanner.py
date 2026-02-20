@@ -15,6 +15,10 @@ from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
 import json
 import re
+import csv
+import os
+import urllib.request
+import tempfile
 
 try:
     from rich.console import Console
@@ -28,510 +32,7 @@ except ImportError:
     print("⚠️  Rich library not available. Install with: pip install rich")
     print("   Falling back to basic output...\n")
 
-# MAC vendor database (common vendors)
-MAC_VENDORS = {
-    '00:50:56': 'VMware',
-    '00:0C:29': 'VMware',
-    '00:1C:14': 'VMware',
-    '00:05:69': 'VMware',
-    '00:0F:4B': 'VMware',
-    '08:00:27': 'VirtualBox',
-    '00:1B:21': 'VirtualBox',
-    '00:1C:42': 'Parallels',
-    '00:25:90': 'Parallels',
-    'B8:27:EB': 'Raspberry Pi Foundation',
-    'DC:A6:32': 'Raspberry Pi Foundation',
-    'E4:5F:01': 'Raspberry Pi Foundation',
-    '28:CD:4C': 'Raspberry Pi Foundation',
-    '00:1E:C2': 'Apple',
-    '00:23:DF': 'Apple',
-    '00:25:00': 'Apple',
-    '00:25:4B': 'Apple',
-    '00:26:08': 'Apple',
-    '00:26:4A': 'Apple',
-    '00:26:BB': 'Apple',
-    '00:50:E4': 'Apple',
-    '04:0C:CE': 'Apple',
-    '04:15:52': 'Apple',
-    '04:1E:64': 'Apple',
-    '04:26:65': 'Apple',
-    '04:4C:59': 'Apple',
-    '04:54:53': 'Apple',
-    '04:69:F8': 'Apple',
-    '04:DB:56': 'Apple',
-    '08:00:07': 'Apple',
-    '08:66:98': 'Apple',
-    '0C:3E:9F': 'Apple',
-    '0C:4D:E9': 'Apple',
-    '0C:74:C2': 'Apple',
-    '0C:BC:9F': 'Apple',
-    '0C:D7:46': 'Apple',
-    '10:93:E9': 'Apple',
-    '14:10:9F': 'Apple',
-    '14:7D:DA': 'Apple',
-    '18:65:90': 'Apple',
-    '1C:1A:C0': 'Apple',
-    '1C:AB:A7': 'Apple',
-    '20:78:F0': 'Apple',
-    '24:A0:74': 'Apple',
-    '28:37:37': 'Apple',
-    '28:CF:DA': 'Apple',
-    '2C:1F:23': 'Apple',
-    '2C:33:7A': 'Apple',
-    '30:90:AB': 'Apple',
-    '34:15:9E': 'Apple',
-    '34:A3:95': 'Apple',
-    '38:CA:DA': 'Apple',
-    '3C:07:54': 'Apple',
-    '40:33:1A': 'Apple',
-    '40:A6:D9': 'Apple',
-    '44:FB:42': 'Apple',
-    '48:43:7C': 'Apple',
-    '4C:8D:79': 'Apple',
-    '50:EA:D6': 'Apple',
-    '54:26:96': 'Apple',
-    '58:55:CA': 'Apple',
-    '5C:59:48': 'Apple',
-    '5C:95:AE': 'Apple',
-    '60:33:4B': 'Apple',
-    '64:A5:C3': 'Apple',
-    '68:96:7B': 'Apple',
-    '6C:40:08': 'Apple',
-    '70:48:0F': 'Apple',
-    '78:31:C1': 'Apple',
-    '7C:6D:62': 'Apple',
-    '80:E6:50': 'Apple',
-    '84:38:35': 'Apple',
-    '88:63:DF': 'Apple',
-    '8C:85:90': 'Apple',
-    '90:72:40': 'Apple',
-    '94:E9:6A': 'Apple',
-    '98:01:A7': 'Apple',
-    '9C:84:BF': 'Apple',
-    'A0:99:9B': 'Apple',
-    'A4:5E:60': 'Apple',
-    'A8:60:B6': 'Apple',
-    'AC:DE:48': 'Apple',
-    'B0:65:BD': 'Apple',
-    'B4:F0:AB': 'Apple',
-    'B8:53:AC': 'Apple',
-    'BC:52:B7': 'Apple',
-    'C0:25:E9': 'Apple',
-    'C4:2C:03': 'Apple',
-    'C8:BC:C8': 'Apple',
-    'CC:08:E0': 'Apple',
-    'D0:03:4B': 'Apple',
-    'D4:9A:20': 'Apple',
-    'D8:30:62': 'Apple',
-    'D8:A2:5E': 'Apple',
-    'DC:A9:04': 'Apple',
-    'E0:AC:CB': 'Apple',
-    'E4:CE:8F': 'Apple',
-    'E8:80:2E': 'Apple',
-    'EC:35:86': 'Apple',
-    'F0:DB:E2': 'Apple',
-    'F4:F1:5A': 'Apple',
-    'F8:1E:DF': 'Apple',
-    'FC:25:3F': 'Apple',
-    '00:1B:44': 'Samsung',
-    '00:15:99': 'Samsung',
-    '00:16:6B': 'Samsung',
-    '00:1E:7D': 'Samsung',
-    '00:1F:CC': 'Samsung',
-    '00:23:39': 'Samsung',
-    '00:24:54': 'Samsung',
-    '00:26:5D': 'Samsung',
-    '00:26:E8': 'Samsung',
-    '00:50:F1': 'Samsung',
-    '04:FE:31': 'Samsung',
-    '08:00:28': 'Samsung',
-    '0C:14:20': 'Samsung',
-    '10:30:47': 'Samsung',
-    '14:7D:DA': 'Samsung',
-    '18:16:C9': 'Samsung',
-    '1C:66:AA': 'Samsung',
-    '20:02:AF': 'Samsung',
-    '24:DB:AC': 'Samsung',
-    '28:36:38': 'Samsung',
-    '2C:44:FD': 'Samsung',
-    '30:63:6B': 'Samsung',
-    '34:23:87': 'Samsung',
-    '38:16:D1': 'Samsung',
-    '3C:BD:3E': 'Samsung',
-    '40:B0:34': 'Samsung',
-    '44:80:EB': 'Samsung',
-    '48:13:7E': 'Samsung',
-    '4C:66:41': 'Samsung',
-    '50:EA:D6': 'Samsung',
-    '54:92:BE': 'Samsung',
-    '58:55:CA': 'Samsung',
-    '5C:0A:5B': 'Samsung',
-    '60:21:C0': 'Samsung',
-    '64:16:66': 'Samsung',
-    '68:27:37': 'Samsung',
-    '6C:8D:C1': 'Samsung',
-    '70:F1:1C': 'Samsung',
-    '74:45:CE': 'Samsung',
-    '78:25:AD': 'Samsung',
-    '7C:1E:52': 'Samsung',
-    '80:18:A7': 'Samsung',
-    '84:25:DB': 'Samsung',
-    '88:83:22': 'Samsung',
-    '8C:3A:E3': 'Samsung',
-    '90:48:9A': 'Samsung',
-    '94:B1:0A': 'Samsung',
-    '98:5F:D3': 'Samsung',
-    '9C:65:B0': 'Samsung',
-    'A0:AB:1B': 'Samsung',
-    'A4:50:46': 'Samsung',
-    'A8:96:75': 'Samsung',
-    'AC:5A:14': 'Samsung',
-    'B0:DF:C1': 'Samsung',
-    'B4:AE:2B': 'Samsung',
-    'B8:57:D8': 'Samsung',
-    'BC:20:A4': 'Samsung',
-    'C0:65:32': 'Samsung',
-    'C4:62:EA': 'Samsung',
-    'C8:85:50': 'Samsung',
-    'CC:07:AB': 'Samsung',
-    'D0:22:BE': 'Samsung',
-    'D4:6E:5C': 'Samsung',
-    'D8:57:EF': 'Samsung',
-    'DC:66:72': 'Samsung',
-    'E0:50:8B': 'Samsung',
-    'E4:58:E7': 'Samsung',
-    'E8:50:8B': 'Samsung',
-    'EC:0E:C4': 'Samsung',
-    'F0:25:B7': 'Samsung',
-    'F4:09:D8': 'Samsung',
-    'F8:77:B8': 'Samsung',
-    'FC:62:B9': 'Samsung',
-    '00:1A:79': 'LG Electronics',
-    '00:1E:75': 'LG Electronics',
-    '00:1F:E1': 'LG Electronics',
-    '00:26:E2': 'LG Electronics',
-    '00:50:7A': 'LG Electronics',
-    '04:0A:95': 'LG Electronics',
-    '08:00:28': 'LG Electronics',
-    '0C:48:85': 'LG Electronics',
-    '10:68:3F': 'LG Electronics',
-    '14:10:9F': 'LG Electronics',
-    '18:16:C9': 'LG Electronics',
-    '1C:99:4C': 'LG Electronics',
-    '20:21:A5': 'LG Electronics',
-    '24:4B:81': 'LG Electronics',
-    '28:5F:DB': 'LG Electronics',
-    '2C:33:7A': 'LG Electronics',
-    '30:85:A9': 'LG Electronics',
-    '34:CE:00': 'LG Electronics',
-    '38:2C:4A': 'LG Electronics',
-    '3C:BD:D8': 'LG Electronics',
-    '40:4E:36': 'LG Electronics',
-    '44:4C:0C': 'LG Electronics',
-    '48:51:B7': 'LG Electronics',
-    '4C:BC:A5': 'LG Electronics',
-    '50:2D:A4': 'LG Electronics',
-    '54:92:BE': 'LG Electronics',
-    '58:55:CA': 'LG Electronics',
-    '5C:0A:5B': 'LG Electronics',
-    '60:21:C0': 'LG Electronics',
-    '64:16:66': 'LG Electronics',
-    '68:27:37': 'LG Electronics',
-    '6C:8D:C1': 'LG Electronics',
-    '70:F1:1C': 'LG Electronics',
-    '74:45:CE': 'LG Electronics',
-    '78:25:AD': 'LG Electronics',
-    '7C:1E:52': 'LG Electronics',
-    '80:18:A7': 'LG Electronics',
-    '84:25:DB': 'LG Electronics',
-    '88:83:22': 'LG Electronics',
-    '8C:3A:E3': 'LG Electronics',
-    '90:48:9A': 'LG Electronics',
-    '94:B1:0A': 'LG Electronics',
-    '98:5F:D3': 'LG Electronics',
-    '9C:65:B0': 'LG Electronics',
-    'A0:AB:1B': 'LG Electronics',
-    'A4:50:46': 'LG Electronics',
-    'A8:96:75': 'LG Electronics',
-    'AC:5A:14': 'LG Electronics',
-    'B0:DF:C1': 'LG Electronics',
-    'B4:AE:2B': 'LG Electronics',
-    'B8:57:D8': 'LG Electronics',
-    'BC:20:A4': 'LG Electronics',
-    'C0:65:32': 'LG Electronics',
-    'C4:62:EA': 'LG Electronics',
-    'C8:85:50': 'LG Electronics',
-    'CC:07:AB': 'LG Electronics',
-    'D0:22:BE': 'LG Electronics',
-    'D4:6E:5C': 'LG Electronics',
-    'D8:57:EF': 'LG Electronics',
-    'DC:66:72': 'LG Electronics',
-    'E0:50:8B': 'LG Electronics',
-    'E4:58:E7': 'LG Electronics',
-    'E8:50:8B': 'LG Electronics',
-    'EC:0E:C4': 'LG Electronics',
-    'F0:25:B7': 'LG Electronics',
-    'F4:09:D8': 'LG Electronics',
-    'F8:77:B8': 'LG Electronics',
-    'FC:62:B9': 'LG Electronics',
-    '00:1C:23': 'Sony',
-    '00:1D:0D': 'Sony',
-    '00:1E:45': 'Sony',
-    '00:24:BE': 'Sony',
-    '00:26:4C': 'Sony',
-    '00:50:C2': 'Sony',
-    '04:0A:95': 'Sony',
-    '08:00:28': 'Sony',
-    '0C:48:85': 'Sony',
-    '10:68:3F': 'Sony',
-    '14:10:9F': 'Sony',
-    '18:16:C9': 'Sony',
-    '1C:99:4C': 'Sony',
-    '20:21:A5': 'Sony',
-    '24:4B:81': 'Sony',
-    '28:5F:DB': 'Sony',
-    '2C:33:7A': 'Sony',
-    '30:85:A9': 'Sony',
-    '34:CE:00': 'Sony',
-    '38:2C:4A': 'Sony',
-    '3C:BD:D8': 'Sony',
-    '40:4E:36': 'Sony',
-    '44:4C:0C': 'Sony',
-    '48:51:B7': 'Sony',
-    '4C:BC:A5': 'Sony',
-    '50:2D:A4': 'Sony',
-    '54:92:BE': 'Sony',
-    '58:55:CA': 'Sony',
-    '5C:0A:5B': 'Sony',
-    '60:21:C0': 'Sony',
-    '64:16:66': 'Sony',
-    '68:27:37': 'Sony',
-    '6C:8D:C1': 'Sony',
-    '70:F1:1C': 'Sony',
-    '74:45:CE': 'Sony',
-    '78:25:AD': 'Sony',
-    '7C:1E:52': 'Sony',
-    '80:18:A7': 'Sony',
-    '84:25:DB': 'Sony',
-    '88:83:22': 'Sony',
-    '8C:3A:E3': 'Sony',
-    '90:48:9A': 'Sony',
-    '94:B1:0A': 'Sony',
-    '98:5F:D3': 'Sony',
-    '9C:65:B0': 'Sony',
-    'A0:AB:1B': 'Sony',
-    'A4:50:46': 'Sony',
-    'A8:96:75': 'Sony',
-    'AC:5A:14': 'Sony',
-    'B0:DF:C1': 'Sony',
-    'B4:AE:2B': 'Sony',
-    'B8:57:D8': 'Sony',
-    'BC:20:A4': 'Sony',
-    'C0:65:32': 'Sony',
-    'C4:62:EA': 'Sony',
-    'C8:85:50': 'Sony',
-    'CC:07:AB': 'Sony',
-    'D0:22:BE': 'Sony',
-    'D4:6E:5C': 'Sony',
-    'D8:57:EF': 'Sony',
-    'DC:66:72': 'Sony',
-    'E0:50:8B': 'Sony',
-    'E4:58:E7': 'Sony',
-    'E8:50:8B': 'Sony',
-    'EC:0E:C4': 'Sony',
-    'F0:25:B7': 'Sony',
-    'F4:09:D8': 'Sony',
-    'F8:77:B8': 'Sony',
-    'FC:62:B9': 'Sony',
-    '00:1A:2B': 'Hisense',
-    '00:1C:23': 'Hisense',
-    '00:1D:0D': 'Hisense',
-    '00:1E:45': 'Hisense',
-    '00:24:BE': 'Hisense',
-    '00:26:4C': 'Hisense',
-    '00:50:C2': 'Hisense',
-    '00:1B:63': 'Xiaomi',
-    '28:6E:D4': 'Xiaomi',
-    '50:64:2B': 'Xiaomi',
-    '64:09:80': 'Xiaomi',
-    '8C:BE:BE': 'Xiaomi',
-    'A0:C5:89': 'Xiaomi',
-    'B0:E2:35': 'Xiaomi',
-    'C8:1E:E7': 'Xiaomi',
-    'DC:66:72': 'Xiaomi',
-    'F0:B4:D2': 'Xiaomi',
-    '00:1E:C2': 'Huawei',
-    '00:23:DF': 'Huawei',
-    '00:25:00': 'Huawei',
-    '00:25:4B': 'Huawei',
-    '00:26:08': 'Huawei',
-    '00:26:4A': 'Huawei',
-    '00:26:BB': 'Huawei',
-    '00:50:E4': 'Huawei',
-    '04:0C:CE': 'Huawei',
-    '04:15:52': 'Huawei',
-    '04:1E:64': 'Huawei',
-    '04:26:65': 'Huawei',
-    '04:4C:59': 'Huawei',
-    '04:54:53': 'Huawei',
-    '04:69:F8': 'Huawei',
-    '04:DB:56': 'Huawei',
-    '08:00:07': 'Huawei',
-    '08:66:98': 'Huawei',
-    '0C:3E:9F': 'Huawei',
-    '0C:4D:E9': 'Huawei',
-    '0C:74:C2': 'Huawei',
-    '0C:BC:9F': 'Huawei',
-    '0C:D7:46': 'Huawei',
-    '10:93:E9': 'Huawei',
-    '14:10:9F': 'Huawei',
-    '14:7D:DA': 'Huawei',
-    '18:65:90': 'Huawei',
-    '1C:1A:C0': 'Huawei',
-    '1C:AB:A7': 'Huawei',
-    '20:78:F0': 'Huawei',
-    '24:A0:74': 'Huawei',
-    '28:37:37': 'Huawei',
-    '28:CF:DA': 'Huawei',
-    '2C:1F:23': 'Huawei',
-    '2C:33:7A': 'Huawei',
-    '30:90:AB': 'Huawei',
-    '34:15:9E': 'Huawei',
-    '34:A3:95': 'Huawei',
-    '38:CA:DA': 'Huawei',
-    '3C:07:54': 'Huawei',
-    '40:33:1A': 'Huawei',
-    '40:A6:D9': 'Huawei',
-    '44:FB:42': 'Huawei',
-    '48:43:7C': 'Huawei',
-    '4C:8D:79': 'Huawei',
-    '50:EA:D6': 'Huawei',
-    '54:26:96': 'Huawei',
-    '58:55:CA': 'Huawei',
-    '5C:59:48': 'Huawei',
-    '5C:95:AE': 'Huawei',
-    '60:33:4B': 'Huawei',
-    '64:A5:C3': 'Huawei',
-    '68:96:7B': 'Huawei',
-    '6C:40:08': 'Huawei',
-    '70:48:0F': 'Huawei',
-    '78:31:C1': 'Huawei',
-    '7C:6D:62': 'Huawei',
-    '80:E6:50': 'Huawei',
-    '84:38:35': 'Huawei',
-    '88:63:DF': 'Huawei',
-    '8C:85:90': 'Huawei',
-    '90:72:40': 'Huawei',
-    '94:E9:6A': 'Huawei',
-    '98:01:A7': 'Huawei',
-    '9C:84:BF': 'Huawei',
-    'A0:99:9B': 'Huawei',
-    'A4:5E:60': 'Huawei',
-    'A8:60:B6': 'Huawei',
-    'AC:DE:48': 'Huawei',
-    'B0:65:BD': 'Huawei',
-    'B4:F0:AB': 'Huawei',
-    'B8:53:AC': 'Huawei',
-    'BC:52:B7': 'Huawei',
-    'C0:25:E9': 'Huawei',
-    'C4:2C:03': 'Huawei',
-    'C8:BC:C8': 'Huawei',
-    'CC:08:E0': 'Huawei',
-    'D0:03:4B': 'Huawei',
-    'D4:9A:20': 'Huawei',
-    'D8:30:62': 'Huawei',
-    'D8:A2:5E': 'Huawei',
-    'DC:A9:04': 'Huawei',
-    'E0:AC:CB': 'Huawei',
-    'E4:CE:8F': 'Huawei',
-    'E8:80:2E': 'Huawei',
-    'EC:35:86': 'Huawei',
-    'F0:DB:E2': 'Huawei',
-    'F4:F1:5A': 'Huawei',
-    'F8:1E:DF': 'Huawei',
-    'FC:25:3F': 'Huawei',
-}
-
-# Common port services
-PORT_SERVICES = {
-    22: 'SSH',
-    23: 'Telnet',
-    80: 'HTTP',
-    443: 'HTTPS',
-    8080: 'HTTP-Proxy',
-    8443: 'HTTPS-Alt',
-    21: 'FTP',
-    25: 'SMTP',
-    53: 'DNS',
-    110: 'POP3',
-    143: 'IMAP',
-    993: 'IMAPS',
-    995: 'POP3S',
-    3306: 'MySQL',
-    5432: 'PostgreSQL',
-    3389: 'RDP',
-    5900: 'VNC',
-    5901: 'VNC',
-    5000: 'UPnP',
-    1900: 'UPnP',
-    36669: 'VIDAA TV',
-    9998: 'VIDAA TV Alt',
-    8080: 'Smart TV',
-    8008: 'Chromecast',
-    8009: 'Chromecast',
-    32400: 'Plex',
-    3689: 'iTunes/DAAP',
-    5353: 'mDNS/Bonjour',
-    631: 'IPP/CUPS',
-    9100: 'HP Printer',
-    515: 'LPD',
-    161: 'SNMP',
-    162: 'SNMP Trap',
-    427: 'SLP',
-    548: 'AFP',
-    548: 'Apple Filing Protocol',
-    62078: 'iPhone Sync',
-    5000: 'Synology',
-    5001: 'Synology',
-    5005: 'Synology',
-    5006: 'Synology',
-    873: 'Rsync',
-    2049: 'NFS',
-    445: 'SMB/CIFS',
-    139: 'NetBIOS',
-    135: 'MS-RPC',
-    137: 'NetBIOS Name',
-    138: 'NetBIOS Datagram',
-    389: 'LDAP',
-    636: 'LDAPS',
-    1723: 'PPTP',
-    1812: 'RADIUS',
-    1813: 'RADIUS Accounting',
-    5060: 'SIP',
-    5061: 'SIP-TLS',
-    3478: 'STUN',
-    1935: 'RTMP',
-    554: 'RTSP',
-    8554: 'RTSP',
-    1935: 'Flash Media Server',
-    7001: 'WebLogic',
-    7002: 'WebLogic',
-    8081: 'HTTP-Proxy',
-    8443: 'HTTPS-Alt',
-    9000: 'SonarQube',
-    9090: 'Cockpit',
-    9091: 'Transmission',
-    51413: 'BitTorrent',
-    6881: 'BitTorrent',
-    6882: 'BitTorrent',
-    6883: 'BitTorrent',
-    6884: 'BitTorrent',
-    6885: 'BitTorrent',
-    6886: 'BitTorrent',
-    6887: 'BitTorrent',
-    6888: 'BitTorrent',
-    6889: 'BitTorrent',
-}
+from constants import MAC_VENDORS, PORT_SERVICES
 
 class NetworkDevice:
     def __init__(self, ip: str):
@@ -616,6 +117,8 @@ class NetworkScanner:
     def __init__(self):
         self.devices: Dict[str, NetworkDevice] = {}
         self.console = Console() if RICH_AVAILABLE else None
+        self._ieee_db_cache = None  # Cache for IEEE OUI database
+        self._ieee_db_path = None  # Path to cached/downloaded database
         
     def get_local_network(self) -> Optional[str]:
         """Get local network CIDR"""
@@ -698,6 +201,76 @@ class NetworkScanner:
         except:
             return (False, None)
     
+    def scan_with_arp_scan(self, network_cidr: str) -> Dict[str, str]:
+        """Use arp-scan if available to get all devices with MAC addresses"""
+        arp_results = {}
+        try:
+            # Try to use arp-scan (requires sudo)
+            result = subprocess.run(['which', 'arp-scan'], 
+                                  capture_output=True, text=True, timeout=2)
+            if result.returncode == 0:
+                # Run arp-scan
+                result = subprocess.run(['sudo', 'arp-scan', '--localnet', '--quiet'],
+                                      capture_output=True, text=True, timeout=10)
+                if result.returncode == 0:
+                    # Parse arp-scan output: "192.168.1.1\t50:42:89:79:05:6f\t(Unknown)"
+                    for line in result.stdout.split('\n'):
+                        parts = line.strip().split('\t')
+                        if len(parts) >= 2:
+                            ip = parts[0].strip()
+                            mac = parts[1].strip()
+                            # Validate IP and MAC
+                            try:
+                                ipaddress.IPv4Address(ip)
+                                if re.match(r'^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$', mac, re.IGNORECASE):
+                                    arp_results[ip] = mac.upper().replace('-', ':')
+                            except:
+                                pass
+        except:
+            pass
+        return arp_results
+    
+    def get_all_arp_entries(self) -> Dict[str, str]:
+        """Get all ARP table entries at once"""
+        arp_entries = {}
+        try:
+            if platform.system() == "Linux":
+                # Get all ARP entries
+                result = subprocess.run(['ip', 'neigh', 'show'],
+                                      capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    for line in result.stdout.split('\n'):
+                        # Format: "192.168.1.1 dev wlan0 lladdr 50:42:89:79:05:6f STALE"
+                        match = re.search(r'(\d+\.\d+\.\d+\.\d+).*?([0-9a-fA-F]{2}[:-][0-9a-fA-F]{2}[:-][0-9a-fA-F]{2}[:-][0-9a-fA-F]{2}[:-][0-9a-fA-F]{2}[:-][0-9a-fA-F]{2})', line, re.IGNORECASE)
+                        if match:
+                            ip = match.group(1)
+                            mac = match.group(2).upper().replace('-', ':')
+                            arp_entries[ip] = mac
+            elif platform.system() == "Darwin":  # macOS
+                result = subprocess.run(['arp', '-a'],
+                                      capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    for line in result.stdout.split('\n'):
+                        # Format: "? (192.168.1.1) at 50:42:89:79:05:6f on en0"
+                        match = re.search(r'\((\d+\.\d+\.\d+\.\d+)\).*?([0-9a-fA-F]{2}[:-][0-9a-fA-F]{2}[:-][0-9a-fA-F]{2}[:-][0-9a-fA-F]{2}[:-][0-9a-fA-F]{2}[:-][0-9a-fA-F]{2})', line, re.IGNORECASE)
+                        if match:
+                            ip = match.group(1)
+                            mac = match.group(2).upper().replace('-', ':')
+                            arp_entries[ip] = mac
+            elif platform.system() == "Windows":
+                result = subprocess.run(['arp', '-a'],
+                                      capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    for line in result.stdout.split('\n'):
+                        match = re.search(r'(\d+\.\d+\.\d+\.\d+).*?([0-9a-fA-F]{2}[:-][0-9a-fA-F]{2}[:-][0-9a-fA-F]{2}[:-][0-9a-fA-F]{2}[:-][0-9a-fA-F]{2}[:-][0-9a-fA-F]{2})', line, re.IGNORECASE)
+                        if match:
+                            ip = match.group(1)
+                            mac = match.group(2).upper().replace('-', ':')
+                            arp_entries[ip] = mac
+        except:
+            pass
+        return arp_entries
+    
     def get_mac_address(self, ip: str) -> Optional[str]:
         """Get MAC address using ARP table"""
         try:
@@ -735,11 +308,159 @@ class NetworkScanner:
             return None
     
     def identify_vendor(self, mac: str) -> Optional[str]:
-        """Identify vendor from MAC address"""
+        """Identify vendor from MAC address using IEEE OUI database or fallback to constants"""
         if not mac:
             return None
         mac_prefix = ':'.join(mac.split(':')[:3]).upper()
+        
+        # First try IEEE OUI database (much more comprehensive)
+        vendor = self._get_vendor_from_ieee_db(mac_prefix)
+        if vendor:
+            return vendor
+        
+        # Fallback to hardcoded constants
         return MAC_VENDORS.get(mac_prefix)
+    
+    def _get_vendor_from_ieee_db(self, mac_prefix: str) -> Optional[str]:
+        """Get vendor from IEEE OUI database - tries multiple locations"""
+        # Convert MAC prefix to match format (remove colons, uppercase)
+        mac_clean = mac_prefix.replace(':', '').upper()
+        mac_clean_dash = mac_prefix.replace(':', '-').upper()
+        
+        # List of possible paths for IEEE OUI database
+        possible_paths = []
+        
+        if platform.system() == "Linux":
+            # Linux standard locations
+            possible_paths = [
+                '/usr/share/ieee-data/oui.csv',
+                '/usr/share/ieee-data/oui.txt',
+                '/usr/local/share/ieee-data/oui.csv',
+                '/usr/local/share/ieee-data/oui.txt',
+            ]
+        elif platform.system() == "Darwin":  # macOS
+            possible_paths = [
+                '/usr/local/share/ieee-data/oui.csv',
+                '/usr/local/share/ieee-data/oui.txt',
+                '/opt/homebrew/share/ieee-data/oui.csv',
+                '/opt/homebrew/share/ieee-data/oui.txt',
+            ]
+        elif platform.system() == "Windows":
+            # Windows - try common locations or user's AppData
+            appdata = os.getenv('APPDATA', '')
+            localappdata = os.getenv('LOCALAPPDATA', '')
+            possible_paths = [
+                os.path.join(localappdata, 'ieee-data', 'oui.csv') if localappdata else None,
+                os.path.join(localappdata, 'ieee-data', 'oui.txt') if localappdata else None,
+                os.path.join(appdata, 'ieee-data', 'oui.csv') if appdata else None,
+                os.path.join(appdata, 'ieee-data', 'oui.txt') if appdata else None,
+                'oui.csv',  # Current directory
+                'oui.txt',  # Current directory
+            ]
+            possible_paths = [p for p in possible_paths if p]  # Remove None values
+        
+        # Try CSV format first (faster, more reliable)
+        for oui_csv_path in possible_paths:
+            if oui_csv_path.endswith('.csv'):
+                try:
+                    with open(oui_csv_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        reader = csv.reader(f)
+                        # Skip header
+                        next(reader)
+                        
+                        for row in reader:
+                            if len(row) >= 3:
+                                assignment = row[1].strip().upper()
+                                org_name = row[2].strip().strip('"')
+                                
+                                # Check if assignment matches (exact match for first 6 chars for MA-L)
+                                if len(assignment) == 6 and assignment == mac_clean[:6]:
+                                    return org_name
+                        # If we read the file but didn't find a match, don't try other CSV files
+                        break
+                except FileNotFoundError:
+                    continue
+                except Exception:
+                    continue
+        
+        # Fallback to TXT format if CSV not available
+        for oui_txt_path in possible_paths:
+            if oui_txt_path.endswith('.txt'):
+                try:
+                    with open(oui_txt_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        for line in f:
+                            # Format: "00-22-72   (hex)		American Micro-Fuel Device Corp."
+                            if mac_clean_dash in line and '(hex)' in line:
+                                # Extract organization name (after tab)
+                                parts = line.split('\t')
+                                if len(parts) >= 2:
+                                    org_name = parts[-1].strip()
+                                    if org_name:
+                                        return org_name
+                        # If we read the file but didn't find a match, don't try other TXT files
+                        break
+                except FileNotFoundError:
+                    continue
+                except Exception:
+                    continue
+        
+        # If no local database found, try to download it (one-time, cached)
+        if not self._ieee_db_path:
+            self._ieee_db_path = self._download_ieee_db()
+        
+        if self._ieee_db_path:
+            try:
+                if self._ieee_db_path.endswith('.csv'):
+                    with open(self._ieee_db_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        reader = csv.reader(f)
+                        next(reader)  # Skip header
+                        for row in reader:
+                            if len(row) >= 3:
+                                assignment = row[1].strip().upper()
+                                org_name = row[2].strip().strip('"')
+                                if len(assignment) == 6 and assignment == mac_clean[:6]:
+                                    return org_name
+            except Exception:
+                pass
+        
+        return None
+    
+    def _download_ieee_db(self) -> Optional[str]:
+        """Download IEEE OUI database from official source if not available locally"""
+        try:
+            # Create cache directory
+            cache_dir = os.path.join(tempfile.gettempdir(), 'network_scanner_ieee_db')
+            os.makedirs(cache_dir, exist_ok=True)
+            cache_file = os.path.join(cache_dir, 'oui.csv')
+            
+            # Check if already downloaded
+            if os.path.exists(cache_file):
+                return cache_file
+            
+            # Try to download from IEEE
+            if self.console:
+                self.console.print("[dim]Preuzimanje IEEE OUI baze podataka...[/dim]")
+            else:
+                print("Preuzimanje IEEE OUI baze podataka...")
+            
+            # IEEE official OUI CSV download URL
+            oui_url = "https://standards-oui.ieee.org/oui/oui.csv"
+            
+            try:
+                urllib.request.urlretrieve(oui_url, cache_file)
+                if self.console:
+                    self.console.print("[green]✓ IEEE OUI baza preuzeta[/green]")
+                else:
+                    print("✓ IEEE OUI baza preuzeta")
+                return cache_file
+            except Exception as e:
+                if self.console:
+                    self.console.print(f"[yellow]⚠ Nije moguće preuzeti IEEE bazu: {e}[/yellow]")
+                else:
+                    print(f"⚠ Nije moguće preuzeti IEEE bazu: {e}")
+                return None
+        except Exception:
+            return None
     
     def scan_port(self, ip: str, port: int, timeout: float = 0.5) -> bool:
         """Check if a port is open"""
@@ -791,15 +512,100 @@ class NetworkScanner:
             print(f"🔍 Skeniranje mreže: {network_cidr}")
             print(f"Pronalaženje aktivnih uređaja...\n")
         
-        # Phase 1: Ping scan
-        hosts = list(network.hosts())
-        total = len(hosts)
-        found_count = 0
+        # Phase 1: Try arp-scan first, then ARP table, then ping scan
+        arp_devices = {}
         
         if self.console:
             with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=self.console) as progress:
-                task = progress.add_task("Skeniranje...", total=total)
-                for host in hosts:
+                task = progress.add_task("🔍 Skeniranje mreže...", total=None)
+                
+                # Try arp-scan first (most reliable)
+                progress.update(task, description="🔍 Pokušavam arp-scan...")
+                arp_scan_results = self.scan_with_arp_scan(network_cidr)
+                if arp_scan_results:
+                    arp_devices = arp_scan_results
+                    progress.update(task, description=f"✅ arp-scan pronašao {len(arp_devices)} uređaja")
+                else:
+                    # Fallback to ARP table
+                    progress.update(task, advance=1)
+                    progress.update(task, description="🔍 Koristim ARP tabelu...")
+                    arp_devices = self.get_all_arp_entries()
+                    if arp_devices:
+                        progress.update(task, description=f"✅ ARP tabela pronašla {len(arp_devices)} uređaja")
+        else:
+            # Try arp-scan first (most reliable)
+            print("Pokušavam arp-scan...", end='\r')
+            arp_scan_results = self.scan_with_arp_scan(network_cidr)
+            if arp_scan_results:
+                arp_devices = arp_scan_results
+                print(f"✓ arp-scan pronašao {len(arp_devices)} uređaja")
+            else:
+                # Fallback to ARP table
+                print("Koristim ARP tabelu...", end='\r')
+                arp_devices = self.get_all_arp_entries()
+                if arp_devices:
+                    print(f"✓ ARP tabela pronašla {len(arp_devices)} uređaja")
+        
+        # If we have ARP results, use them; otherwise fall back to ping
+        if arp_devices:
+            found_count = 0
+            arp_list = list(arp_devices.items())
+            total_arp = len(arp_list)
+            
+            if self.console:
+                with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=self.console) as progress:
+                    task = progress.add_task("📋 Obrada ARP rezultata...", total=total_arp)
+                    for ip, mac in arp_list:
+                        # Check if IP is in the network
+                        try:
+                            if ipaddress.IPv4Address(ip) in network:
+                                device = NetworkDevice(ip)
+                                device.mac = mac
+                                device.is_alive = True
+                                # Try to ping for response time
+                                is_alive, response_time = self.ping_host(ip)
+                                device.response_time = response_time
+                                self.devices[ip] = device
+                                found_count += 1
+                        except:
+                            pass
+                        progress.update(task, advance=1)
+            else:
+                for ip, mac in arp_list:
+                    # Check if IP is in the network
+                    try:
+                        if ipaddress.IPv4Address(ip) in network:
+                            device = NetworkDevice(ip)
+                            device.mac = mac
+                            device.is_alive = True
+                            # Try to ping for response time
+                            is_alive, response_time = self.ping_host(ip)
+                            device.response_time = response_time
+                            self.devices[ip] = device
+                            found_count += 1
+                    except:
+                        pass
+        else:
+            # Fallback to ping scan
+            hosts = list(network.hosts())
+            total = len(hosts)
+            found_count = 0
+            
+            if self.console:
+                with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=self.console) as progress:
+                    task = progress.add_task("Skeniranje...", total=total)
+                    for host in hosts:
+                        ip = str(host)
+                        is_alive, response_time = self.ping_host(ip)
+                        if is_alive:
+                            device = NetworkDevice(ip)
+                            device.is_alive = True
+                            device.response_time = response_time
+                            self.devices[ip] = device
+                            found_count += 1
+                        progress.update(task, advance=1)
+            else:
+                for i, host in enumerate(hosts):
                     ip = str(host)
                     is_alive, response_time = self.ping_host(ip)
                     if is_alive:
@@ -808,46 +614,65 @@ class NetworkScanner:
                         device.response_time = response_time
                         self.devices[ip] = device
                         found_count += 1
-                    progress.update(task, advance=1)
-        else:
-            for i, host in enumerate(hosts):
-                ip = str(host)
-                is_alive, response_time = self.ping_host(ip)
-                if is_alive:
-                    device = NetworkDevice(ip)
-                    device.is_alive = True
-                    device.response_time = response_time
-                    self.devices[ip] = device
-                    found_count += 1
-                if (i + 1) % 10 == 0:
-                    print(f"Progres: {i + 1}/{total}...", end='\r')
+                    if (i + 1) % 10 == 0:
+                        print(f"Progres: {i + 1}/{total}...", end='\r')
         
         if self.console:
             self.console.print(f"\n[green]✅ Pronađeno {found_count} aktivnih uređaja[/green]\n")
-            self.console.print("[dim]Identifikacija uređaja...[/dim]\n")
         else:
             print(f"\n✅ Pronađeno {found_count} aktivnih uređaja\n")
-            print("Identifikacija uređaja...\n")
         
         # Phase 2: Get details for each device
-        for ip, device in self.devices.items():
-            # Get MAC address
-            device.mac = self.get_mac_address(ip)
-            
-            # Get hostname
-            device.hostname = self.get_hostname(ip)
-            
-            # Identify vendor
-            if device.mac:
-                device.vendor = self.identify_vendor(device.mac)
-            
-            # Scan ports if requested
-            if scan_ports:
-                device.open_ports = self.scan_common_ports(ip)
-                device.services = [PORT_SERVICES.get(port, f"Port {port}") for port in device.open_ports]
-            
-            # Identify device type
-            device.identify_device_type()
+        device_list = list(self.devices.items())
+        total_devices = len(device_list)
+        
+        if self.console:
+            with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=self.console) as progress:
+                task = progress.add_task("🔍 Identifikacija uređaja...", total=total_devices)
+                for ip, device in device_list:
+                    # Get MAC address if not already set
+                    if not device.mac:
+                        device.mac = self.get_mac_address(ip)
+                    
+                    # Get hostname
+                    device.hostname = self.get_hostname(ip)
+                    
+                    # Identify vendor
+                    if device.mac:
+                        device.vendor = self.identify_vendor(device.mac)
+                    
+                    # Scan ports if requested
+                    if scan_ports:
+                        device.open_ports = self.scan_common_ports(ip)
+                        device.services = [PORT_SERVICES.get(port, f"Port {port}") for port in device.open_ports]
+                    
+                    # Identify device type
+                    device.identify_device_type()
+                    
+                    progress.update(task, advance=1)
+        else:
+            for i, (ip, device) in enumerate(device_list):
+                # Get MAC address if not already set
+                if not device.mac:
+                    device.mac = self.get_mac_address(ip)
+                
+                # Get hostname
+                device.hostname = self.get_hostname(ip)
+                
+                # Identify vendor
+                if device.mac:
+                    device.vendor = self.identify_vendor(device.mac)
+                
+                # Scan ports if requested
+                if scan_ports:
+                    device.open_ports = self.scan_common_ports(ip)
+                    device.services = [PORT_SERVICES.get(port, f"Port {port}") for port in device.open_ports]
+                
+                # Identify device type
+                device.identify_device_type()
+                
+                if (i + 1) % 5 == 0:
+                    print(f"Identifikacija: {i + 1}/{total_devices}...", end='\r')
     
     def display_results(self):
         """Display scan results in a nice format"""
